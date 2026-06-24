@@ -11,7 +11,8 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QComboBox, QProgressBar, QTableWidget,
     QTableWidgetItem, QFileDialog, QMessageBox, QHeaderView,
-    QGroupBox, QTextEdit, QGridLayout
+    QGroupBox, QTextEdit, QGridLayout, QLineEdit, QDialog,
+    QFormLayout, QDialogButtonBox
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QColor
@@ -28,7 +29,27 @@ def load_config():
             "Please create it with your LinkedIn cookies and headers.")
         sys.exit(1)
     with open(CONFIG_FILE, "r") as f:
-        return json.load(f)
+        config = json.load(f)
+
+    # Support both new (accounts array) and old (single cookies) formats
+    if "accounts" not in config:
+        # Migrate old format to new
+        config["accounts"] = [
+            {"label": "Account 1", "cookies": config.get("cookies", {})}
+        ]
+
+    if not config["accounts"]:
+        QMessageBox.critical(None, "No Accounts",
+            "config.json has no accounts defined.\n\n"
+            "Add at least one account with li_at and JSESSIONID cookies.")
+        sys.exit(1)
+
+    return config
+
+
+def save_config(config):
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config, f, indent=4)
 
 
 # ─── URL / Username helpers ──────────────────────────────────────────────────
@@ -36,7 +57,6 @@ def load_config():
 def extract_public_username(url):
     """Extract public username from a LinkedIn profile URL."""
     url = url.strip()
-    # Match pattern: linkedin.com/in/{username}
     m = re.search(r'linkedin\.com/in/([^/?&#]+)', url, re.IGNORECASE)
     if m:
         return m.group(1).rstrip("/")
@@ -59,6 +79,58 @@ def build_compose_options_url(urn_id):
     return f"https://www.linkedin.com/voyager/api/voyagerMessagingDashComposeOptions/{encoded_urn}"
 
 
+# ─── Add Account Dialog ──────────────────────────────────────────────────────
+
+class AddAccountDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add LinkedIn Account")
+        self.setMinimumWidth(500)
+
+        layout = QFormLayout(self)
+
+        self.edit_label = QLineEdit()
+        self.edit_label.setPlaceholderText("e.g. Account 1, John's account")
+        layout.addRow("Label:", self.edit_label)
+
+        self.edit_li_at = QLineEdit()
+        self.edit_li_at.setPlaceholderText("Paste li_at cookie value here")
+        layout.addRow("li_at:", self.edit_li_at)
+
+        self.edit_jsessionid = QLineEdit()
+        self.edit_jsessionid.setPlaceholderText("e.g. ajax:1211141711291238314636")
+        layout.addRow("JSESSIONID:", self.edit_jsessionid)
+
+        self.edit_li_sugr = QLineEdit()
+        layout.addRow("li_sugr (optional):", self.edit_li_sugr)
+
+        self.edit_bcookie = QLineEdit()
+        layout.addRow("bcookie (optional):", self.edit_bcookie)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
+    def get_account_data(self):
+        return {
+            "label": self.edit_label.text().strip() or "Unnamed",
+            "cookies": {
+                "li_at": self.edit_li_at.text().strip(),
+                "JSESSIONID": self.edit_jsessionid.text().strip('"').strip(),
+                "li_sugr": self.edit_li_sugr.text().strip(),
+                "bcookie": self.edit_bcookie.text().strip(),
+                "bscookie": "",
+                "liap": "true",
+                "li_theme": "light",
+                "li_theme_set": "app",
+                "lang": "v=2&lang=en-US",
+                "timezone": "Asia/Dhaka",
+                "UserMatchHistory": ""
+            }
+        }
+
+
 # ─── Worker Thread ───────────────────────────────────────────────────────────
 
 class DetectionWorker(QThread):
@@ -66,16 +138,22 @@ class DetectionWorker(QThread):
     result_ready = pyqtSignal(dict)             # one result dict per profile
     finished = pyqtSignal()
 
-    def __init__(self, profiles, cookies, headers, delay=5):
+    def __init__(self, profiles, accounts, headers):
         super().__init__()
         self.profiles = profiles          # list of (original_url, public_username)
-        self.cookies = cookies
-        self.headers = headers
-        self.delay = delay
+        self.accounts = accounts          # list of {label, cookies}
+        self.headers = headers.copy()     # shared headers template
         self._stop = False
+        self._account_index = 0
 
     def stop(self):
         self._stop = True
+
+    def _next_account(self):
+        """Get the next account in round-robin fashion."""
+        account = self.accounts[self._account_index % len(self.accounts)]
+        self._account_index += 1
+        return account
 
     def run(self):
         total = len(self.profiles)
@@ -83,7 +161,12 @@ class DetectionWorker(QThread):
             if self._stop:
                 break
 
-            self.progress.emit(idx, total, f"Processing {username} ({idx}/{total})...")
+            # Pick the next account (round-robin)
+            account = self._next_account()
+            cookies = account["cookies"]
+            label = account.get("label", "Unnamed")
+
+            self.progress.emit(idx, total, f"[{label}] Processing {username} ({idx}/{total})...")
 
             result = {
                 "url": url,
@@ -91,17 +174,18 @@ class DetectionWorker(QThread):
                 "urn": "",
                 "open": None,
                 "error": None,
+                "account_label": label,
             }
 
             try:
                 # Step 1: Get profile URN
-                csrf = self.cookies.get("JSESSIONID", "").strip('"')
+                csrf = cookies.get("JSESSIONID", "").strip('"')
                 self.headers["csrf-token"] = csrf
 
                 resp = requests.get(
                     build_profile_urn_url(username),
                     headers=self.headers,
-                    cookies=self.cookies,
+                    cookies=cookies,
                     timeout=30,
                 )
                 resp.raise_for_status()
@@ -116,8 +200,6 @@ class DetectionWorker(QThread):
                 if not profile_obj:
                     result["error"] = "Could not find profile in response"
                     self.result_ready.emit(result)
-                    if idx < total and not self._stop:
-                        time.sleep(self.delay)
                     continue
 
                 urn = profile_obj.get("entityUrn", "")
@@ -128,7 +210,7 @@ class DetectionWorker(QThread):
                 compose_resp = requests.get(
                     build_compose_options_url(urn_id),
                     headers=self.headers,
-                    cookies=self.cookies,
+                    cookies=cookies,
                     timeout=30,
                 )
                 compose_resp.raise_for_status()
@@ -144,10 +226,6 @@ class DetectionWorker(QThread):
 
             self.result_ready.emit(result)
 
-            # Delay before next request (except last)
-            if idx < total and not self._stop:
-                time.sleep(self.delay)
-
         self.finished.emit()
 
 
@@ -157,13 +235,12 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.config = load_config()
-        self.cookies = self.config["cookies"]
+        self.accounts = self.config["accounts"]
         self.headers = self.config["headers"]
-        self.delay = 5
 
-        self.csv_data = []           # list of dicts (original CSV rows)
-        self.profile_column = None   # column name selected by user
-        self.results = []            # list of result dicts from worker
+        self.csv_data = []
+        self.profile_column = None
+        self.results = []
 
         self.worker = None
 
@@ -174,7 +251,7 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self):
         self.setWindowTitle("LinkedIn Open Profile Detector")
-        self.setMinimumSize(900, 650)
+        self.setMinimumSize(950, 700)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -207,6 +284,32 @@ class MainWindow(QMainWindow):
         title.setStyleSheet("font-size: 20px; font-weight: bold; padding: 15px 0;")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
+
+        # ── Accounts section ──
+        accounts_group = QGroupBox("LinkedIn Accounts (Round-robin)")
+        accounts_layout = QVBoxLayout(accounts_group)
+
+        self.lbl_accounts_count = QLabel("")
+        accounts_layout.addWidget(self.lbl_accounts_count)
+
+        self.list_accounts = QTextEdit()
+        self.list_accounts.setReadOnly(True)
+        self.list_accounts.setMaximumHeight(100)
+        accounts_layout.addWidget(self.list_accounts)
+
+        btn_accounts_layout = QHBoxLayout()
+        self.btn_add_account = QPushButton("+ Add Account")
+        self.btn_add_account.clicked.connect(self._on_add_account)
+        btn_accounts_layout.addWidget(self.btn_add_account)
+
+        self.btn_remove_account = QPushButton("- Remove Last")
+        self.btn_remove_account.clicked.connect(self._on_remove_account)
+        btn_accounts_layout.addWidget(self.btn_remove_account)
+
+        accounts_layout.addLayout(btn_accounts_layout)
+        layout.addWidget(accounts_group)
+
+        self._refresh_accounts_display()
 
         # Upload area
         upload_group = QGroupBox("Step 1: Upload CSV")
@@ -275,8 +378,8 @@ class MainWindow(QMainWindow):
 
         # Results table
         self.table = QTableWidget()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(["Profile URL", "Username", "URN", "Status", "Error"])
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(["Profile URL", "Username", "URN", "Status", "Account Used", "Error"])
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -316,6 +419,53 @@ class MainWindow(QMainWindow):
 
     def _show_results_view(self):
         self._show_view(self.view_results)
+
+    # ─── Account Management ──────────────────────────────────────────────
+
+    def _refresh_accounts_display(self):
+        count = len(self.accounts)
+        self.lbl_accounts_count.setText(
+            f"{count} account(s) configured — used round-robin per profile"
+        )
+        self.lbl_accounts_count.setStyleSheet(
+            "color: #27ae60; font-weight: bold;" if count > 0 else "color: #e74c3c;"
+        )
+
+        lines = []
+        for i, acct in enumerate(self.accounts, 1):
+            label = acct.get("label", "Unnamed")
+            li_at = acct.get("cookies", {}).get("li_at", "")
+            masked = li_at[:20] + "..." if len(li_at) > 20 else li_at
+            lines.append(f"{i}. {label}  —  li_at: {masked}")
+
+        self.list_accounts.setPlainText("\n".join(lines))
+
+        # Re-save config
+        self.config["accounts"] = self.accounts
+        save_config(self.config)
+
+    def _on_add_account(self):
+        dialog = AddAccountDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            account = dialog.get_account_data()
+            if not account["cookies"].get("li_at"):
+                QMessageBox.warning(self, "Missing Cookie",
+                    "li_at is required. Please paste the li_at cookie value.")
+                return
+            if not account["cookies"].get("JSESSIONID"):
+                QMessageBox.warning(self, "Missing Cookie",
+                    "JSESSIONID is required. Please paste the JSESSIONID cookie value.")
+                return
+            self.accounts.append(account)
+            self._refresh_accounts_display()
+
+    def _on_remove_account(self):
+        if not self.accounts:
+            return
+        removed = self.accounts.pop()
+        QMessageBox.information(self, "Removed",
+            f"Removed account: {removed.get('label', 'Unnamed')}")
+        self._refresh_accounts_display()
 
     # ─── CSV Handling ────────────────────────────────────────────────────
 
@@ -359,6 +509,11 @@ class MainWindow(QMainWindow):
     # ─── Detection ───────────────────────────────────────────────────────
 
     def _on_start_detection(self):
+        if not self.accounts:
+            QMessageBox.warning(self, "No Accounts",
+                "Please add at least one LinkedIn account with cookies first.")
+            return
+
         col = self.cmb_column.currentText()
         if not col:
             QMessageBox.warning(self, "No Column", "Please select a profile column first.")
@@ -398,8 +553,13 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.progress_bar.setMaximum(len(profiles))
 
-        # Start worker
-        self.worker = DetectionWorker(profiles, self.cookies, self.headers, self.delay)
+        # Log which accounts are being used
+        account_labels = [a.get("label", "Unnamed") for a in self.accounts]
+        self.txt_log.append(f"Accounts in rotation: {', '.join(account_labels)}")
+        self.txt_log.append(f"Total profiles to process: {len(profiles)}\n")
+
+        # Start worker — no delay, passes all accounts for rotation
+        self.worker = DetectionWorker(profiles, self.accounts, self.headers)
         self.worker.progress.connect(self._on_progress)
         self.worker.result_ready.connect(self._on_result)
         self.worker.finished.connect(self._on_detection_finished)
@@ -413,7 +573,8 @@ class MainWindow(QMainWindow):
     def _on_result(self, result):
         self.results.append(result)
         status = "OPEN" if result["open"] is True else "NOT OPEN" if result["open"] is False else "ERROR"
-        self.txt_log.append(f"  → {result['username']}: {status}" +
+        account = result.get("account_label", "?")
+        self.txt_log.append(f"  → [{account}] {result['username']}: {status}" +
                             (f" ({result['error']})" if result['error'] else ""))
 
     def _on_detection_finished(self):
@@ -450,6 +611,8 @@ class MainWindow(QMainWindow):
             self.table.setItem(row, 3, QTableWidgetItem(
                 "OPEN" if r["open"] is True else "NOT OPEN" if r["open"] is False else "ERROR"
             ))
+            self.table.setItem(row, 4, QTableWidgetItem(r.get("account_label", "")))
+            self.table.setItem(row, 5, QTableWidgetItem(r.get("error", "")))
 
             # Color the status cell
             status_item = self.table.item(row, 3)
@@ -463,12 +626,9 @@ class MainWindow(QMainWindow):
                 status_item.setBackground(QColor("#f39c12"))
                 status_item.setForeground(QColor("white"))
 
-            self.table.setItem(row, 4, QTableWidgetItem(r.get("error", "")))
-
     # ─── Saving ──────────────────────────────────────────────────────────
 
     def _on_save_results(self, all_results=True):
-        # Determine save path
         default_name = "linkedin_open_profiles.csv" if not all_results else "linkedin_full_results.csv"
         path, _ = QFileDialog.getSaveFileName(
             self, "Save Results", default_name, "CSV Files (*.csv);;All Files (*)"
@@ -476,7 +636,6 @@ class MainWindow(QMainWindow):
         if not path:
             return
 
-        # Filter results
         if all_results:
             to_save = self.results
         else:
@@ -486,14 +645,16 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "No Data", "No results to save.")
             return
 
-        # Write CSV
         try:
             with open(path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
-                writer.writerow(["Profile URL", "Username", "URN", "Status", "Error"])
+                writer.writerow(["Profile URL", "Username", "URN", "Status", "Account Used", "Error"])
                 for r in to_save:
                     status = "OPEN" if r["open"] is True else "NOT OPEN" if r["open"] is False else "ERROR"
-                    writer.writerow([r["url"], r["username"], r["urn"], status, r.get("error", "")])
+                    writer.writerow([
+                        r["url"], r["username"], r["urn"],
+                        status, r.get("account_label", ""), r.get("error", "")
+                    ])
 
             QMessageBox.information(self, "Saved",
                 f"Successfully saved {len(to_save)} result(s) to:\n{path}")
@@ -502,13 +663,13 @@ class MainWindow(QMainWindow):
 
     def _reset_and_go_back(self):
         self.results = []
+        self._refresh_accounts_display()
         self._show_start_view()
 
 
 # ─── Entry Point ─────────────────────────────────────────────────────────────
 
 def main():
-    # Check dependencies
     try:
         import PyQt5
     except ImportError:

@@ -1,0 +1,39 @@
+{
+    "data": {
+        "displayText": {
+            "textDirection": "USER_LOCALE",
+            "text": "Message",
+            "attributesV2": [],
+            "accessibilityText": "Message with Premium",
+            "$type": "com.linkedin.voyager.dash.common.text.TextViewModel"
+        },
+        "entityUrn": "urn:li:fsd_composeOption:(ACoAABTXJJsB2VVQ1tyfZocZX1ltTlJn7qZIaPQ,NON_SELF_PROFILE_VIEW,EMPTY_CONTEXT_ENTITY_URN)",
+        "icon": {
+            "attributes": [
+                {
+                    "detailDataUnion": {
+                        "icon": "IC_MESSAGES_16DP"
+                    },
+                    "$type": "com.linkedin.voyager.dash.common.image.ImageAttribute"
+                }
+            ],
+            "$type": "com.linkedin.voyager.dash.common.image.ImageViewModel"
+        },
+        "composeNavigationContext": {
+            "genericRecipientsUnions": [
+                {
+                    "profile": "urn:li:fsd_profile:ACoAABTXJJsB2VVQ1tyfZocZX1ltTlJn7qZIaPQ"
+                }
+            ],
+            "recipientUrns": [
+                "urn:li:fsd_profile:ACoAABTXJJsB2VVQ1tyfZocZX1ltTlJn7qZIaPQ"
+            ],
+            "targetUrl": "https://www.linkedin.com/premium/upsell?channel=INMAIL&premiumUpsellSlotUrn=urn%3Ali%3Afsd_premiumUpsellSlot%3APROFILE_MESSAGE_ACTION&profileUrn=urn%3Ali%3Afsd_profile%3AACoAABTXJJsB2VVQ1tyfZocZX1ltTlJn7qZIaPQ",
+            "$type": "com.linkedin.voyager.dash.messaging.compose.ComposeNavigationContext"
+        },
+        "composeOptionType": "UPSELL",
+        "textStartIcon": null,
+        "$type": "com.linkedin.voyager.dash.messaging.compose.ComposeOption"
+    },
+    "included": []
+}

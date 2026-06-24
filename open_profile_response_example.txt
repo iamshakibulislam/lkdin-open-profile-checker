@@ -1,0 +1,14 @@
+{"data":{"displayText":{"textDirection":"USER_LOCALE","text":"Message","attrib
+utesV2":[],"$type":"com.linkedin.voyager.dash.common.text.TextViewModel"},"entit
+yUrn":"urn:li:fsd_composeOption:(ACoAAAca8BMBdZ7i__LW_xv5pftK7vccL-vYsTQ,NON_SEL
+F_PROFILE_VIEW,EMPTY_CONTEXT_ENTITY_URN)","icon":{"attributes":[{"detailDataUnio
+n":{"icon":"IC_MESSAGES_16DP"},"$type":"com.linkedin.voyager.dash.common.image.I
+mageAttribute"}],"$type":"com.linkedin.voyager.dash.common.image.ImageViewModel"
+},"composeNavigationContext":{"genericRecipientsUnions":[{"profile":"urn:li:fsd_
+profile:ACoAAAca8BMBdZ7i__LW_xv5pftK7vccL-vYsTQ"}],"paidInMail":false,"recipient
+Urns":["urn:li:fsd_profile:ACoAAAca8BMBdZ7i__LW_xv5pftK7vccL-vYsTQ"],"$type":"co
+m.linkedin.voyager.dash.messaging.compose.ComposeNavigationContext"},"composeOpt
+ionType":"PREMIUM_INMAIL","textStartIcon":{"attributes":[{"detailDataUnion":{"ic
+on":"IC_MESSAGES_16DP"},"$type":"com.linkedin.voyager.dash.common.image.ImageAtt
+ribute"}],"$type":"com.linkedin.voyager.dash.common.image.ImageViewModel"},"$typ
+e":"com.linkedin.voyager.dash.messaging.compose.ComposeOption"},"included":[]}

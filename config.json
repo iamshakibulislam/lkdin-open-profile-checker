@@ -1,0 +1,22 @@
+{
+    "cookies": {
+        "li_at": "1z1AQEFAHQBAAAAABlDiswAAAGaSAczQAAAAZ8Es71gTQAAF3VybjpsaTptZW1iZXI6ODc1NzkyMzkzDC_-MrFunjuHzzK66nAJ7Wg2B1atCk2qoB6XoD5Obgp4dEyk7xaHYqryYgn19JozXF9BSn3b5ZV5VXlcPQmoQ7U05Y954TmIF3p7xJi1hz1WMgxJGgTy19nrxQMVC7EL1FfWdQb7RXmgh-vucNOsJnEf1BLT53dMd_UCv09dwv4yYJCMtk6kj9kpwkl-_fYFqMIhzw",
+        "JSESSIONID": "ajax:1211141711291238314636",
+        "li_sugr": "",
+        "bcookie": "",
+        "bscookie": "",
+        "liap": "true",
+        "li_theme": "light",
+        "li_theme_set": "app",
+        "lang": "v=2&lang=en-US",
+        "timezone": "Asia/Dhaka",
+        "UserMatchHistory": ""
+    },
+    "headers": {
+        "accept": "application/vnd.linkedin.normalized+json+2.1",
+        "accept-language": "en-US,en;q=0.9",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+        "x-li-lang": "en_US",
+        "x-restli-protocol-version": "2.0.0"
+    }
+}

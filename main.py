@@ -38,12 +38,6 @@ def load_config():
             {"label": "Account 1", "cookies": config.get("cookies", {})}
         ]
 
-    if not config["accounts"]:
-        QMessageBox.critical(None, "No Accounts",
-            "config.json has no accounts defined.\n\n"
-            "Add at least one account with li_at and JSESSIONID cookies.")
-        sys.exit(1)
-
     return config
 
 
@@ -448,14 +442,6 @@ class MainWindow(QMainWindow):
         dialog = AddAccountDialog(self)
         if dialog.exec_() == QDialog.Accepted:
             account = dialog.get_account_data()
-            if not account["cookies"].get("li_at"):
-                QMessageBox.warning(self, "Missing Cookie",
-                    "li_at is required. Please paste the li_at cookie value.")
-                return
-            if not account["cookies"].get("JSESSIONID"):
-                QMessageBox.warning(self, "Missing Cookie",
-                    "JSESSIONID is required. Please paste the JSESSIONID cookie value.")
-                return
             self.accounts.append(account)
             self._refresh_accounts_display()
 
